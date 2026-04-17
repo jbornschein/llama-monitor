@@ -39,16 +39,10 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     let loaded_count = app.loaded_models.len();
     let total_count = app.all_models.len();
 
-    let status_text = if app.refreshing {
-        Span::styled(" [refreshing…] ", Style::default().fg(Color::Yellow))
-    } else if let Some(t) = app.last_update {
-        let secs = t.elapsed().as_secs();
-        Span::styled(
-            format!(" [updated {secs}s ago] "),
-            Style::default().fg(Color::DarkGray),
-        )
+    let dot = if app.refreshing {
+        Span::styled(" ● ", Style::default().fg(Color::DarkGray))
     } else {
-        Span::styled(" [connecting…] ", Style::default().fg(Color::Yellow))
+        Span::styled(" ○ ", Style::default().fg(Color::DarkGray))
     };
 
     let error_span = if let Some(ref e) = app.error {
@@ -72,7 +66,7 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
             format!(" {loaded_count}/{total_count} loaded "),
             Style::default().fg(LOADED_COLOR),
         ),
-        status_text,
+        dot,
         error_span,
     ]);
 

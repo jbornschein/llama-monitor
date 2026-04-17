@@ -5,7 +5,7 @@ mod ui;
 use anyhow::{Result, bail};
 use app::App;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -94,6 +94,7 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, tick_rate: D
                 if key.kind == KeyEventKind::Press {
                     match key.code {
                         KeyCode::Char('q') | KeyCode::Esc => break,
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
                         KeyCode::Char('r') => {
                             // Force refresh
                             app.set_refreshing(true);
