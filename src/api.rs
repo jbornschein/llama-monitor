@@ -189,7 +189,7 @@ async fn fetch_router_models(client: &Client, base_url: &str, api_key: &str) -> 
 }
 
 async fn fetch_model_details(client: &Client, model_id: &str, port: u16, api_key: &str) -> Result<LoadedModelData> {
-    let base = format!("http://127.0.0.1:{port}");
+    let base = format!("http://localhost:{port}");
 
     // Fetch slots and metadata concurrently
     let (slots_res, meta_res) = tokio::join!(

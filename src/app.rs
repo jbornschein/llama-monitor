@@ -23,7 +23,7 @@ impl SlotHistory {
         Self {
             last_n_decoded: n_decoded,
             last_fetch_time: now,
-            tps_history: vec![0.0; HISTORY_LEN],
+            tps_history: Vec::with_capacity(HISTORY_LEN),
             current_tps: 0.0,
             last_id_task: id_task,
             in_prefill: false,

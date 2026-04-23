@@ -104,16 +104,18 @@ async fn main() -> Result<()> {
 
 async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, tick_rate: Duration, server_url: String, api_key: String) -> Result<()> {
     let mut headers = HeaderMap::new();
-    headers.insert("Authorization", format!("Bearer {}", api_key).parse().unwrap());
+    let auth_header = format!("Bearer {}", api_key).parse().map_err(|e| anyhow::anyhow!("Invalid auth header: {e}"))?;
+    headers.insert("Authorization", auth_header);
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
         .default_headers(headers)
-        .build()?;
+        .build()
+        .map_err(|e| anyhow::anyhow!("Failed to build HTTP client: {e}"))?;
 
     let mut app = App::new(server_url.clone());
 
-    // Channel for background fetch results
-    let (tx, mut rx) = mpsc::channel(16);
+    // Channel for background fetch results (unbounded to prevent blocking)
+    let (tx, mut rx) = mpsc::unbounded_channel();
 
     // Initial fetch
     {
@@ -123,7 +125,7 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, tick_rate: D
         let tx = tx.clone();
         tokio::spawn(async move {
             let data = api::fetch_all(&client, &url, &key).await;
-            let _ = tx.send(data).await;
+            let _ = tx.send(data);
         });
     }
 
@@ -133,9 +135,12 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, tick_rate: D
         terminal.draw(|f| ui::draw(f, &app))?;
 
         // Poll for events with short timeout so we stay responsive
-        let timeout = tick_rate
-            .checked_sub(last_tick.elapsed())
-            .unwrap_or_default();
+        let elapsed = last_tick.elapsed();
+        let timeout = if elapsed < tick_rate {
+            tick_rate - elapsed
+        } else {
+            Duration::ZERO
+        };
 
         if event::poll(timeout.min(Duration::from_millis(100)))? {
             if let Event::Key(key) = event::read()? {
@@ -152,7 +157,7 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, tick_rate: D
                             let tx = tx.clone();
                             tokio::spawn(async move {
                                 let data = api::fetch_all(&client, &url, &key).await;
-                                let _ = tx.send(data).await;
+                                let _ = tx.send(data);
                             });
                             last_tick = Instant::now();
                         }
@@ -178,7 +183,7 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, tick_rate: D
             let tx = tx.clone();
             tokio::spawn(async move {
                 let data = api::fetch_all(&client, &url, &key).await;
-                let _ = tx.send(data).await;
+                let _ = tx.send(data);
             });
             last_tick = Instant::now();
         }
