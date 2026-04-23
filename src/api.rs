@@ -126,7 +126,7 @@ pub struct FetchResult {
     pub error: Option<String>,
 }
 
-pub async fn fetch_all(client: &Client, base_url: &str) -> FetchResult {
+pub async fn fetch_all(client: &Client, base_url: &str, api_key: &str) -> FetchResult {
     let mut result = FetchResult {
         all_models: vec![],
         loaded: vec![],
@@ -134,7 +134,7 @@ pub async fn fetch_all(client: &Client, base_url: &str) -> FetchResult {
     };
 
     // 1. Fetch router model list
-    let models = match fetch_router_models(client, base_url).await {
+    let models = match fetch_router_models(client, base_url, api_key).await {
         Ok(m) => m,
         Err(e) => {
             result.error = Some(format!("Router: {e}"));
@@ -151,8 +151,9 @@ pub async fn fetch_all(client: &Client, base_url: &str) -> FetchResult {
     for model in loaded {
         if let Some(port) = model.port() {
             let client = client.clone();
+            let api_key = api_key.to_string();
             handles.push(tokio::spawn(async move {
-                fetch_model_details(&client, &model.id, port).await
+                fetch_model_details(&client, &model.id, port, &api_key).await
             }));
         }
     }
@@ -176,10 +177,10 @@ pub async fn fetch_all(client: &Client, base_url: &str) -> FetchResult {
     result
 }
 
-async fn fetch_router_models(client: &Client, base_url: &str) -> Result<Vec<RouterModel>> {
+async fn fetch_router_models(client: &Client, base_url: &str, api_key: &str) -> Result<Vec<RouterModel>> {
     let resp: RouterModelsResponse = client
         .get(format!("{base_url}/v1/models"))
-        .bearer_auth("KEY-SECRET")
+        .bearer_auth(api_key)
         .send()
         .await?
         .json()
@@ -187,13 +188,13 @@ async fn fetch_router_models(client: &Client, base_url: &str) -> Result<Vec<Rout
     Ok(resp.data)
 }
 
-async fn fetch_model_details(client: &Client, model_id: &str, port: u16) -> Result<LoadedModelData> {
+async fn fetch_model_details(client: &Client, model_id: &str, port: u16, api_key: &str) -> Result<LoadedModelData> {
     let base = format!("http://127.0.0.1:{port}");
 
     // Fetch slots and metadata concurrently
     let (slots_res, meta_res) = tokio::join!(
-        fetch_slots(client, &base),
-        fetch_model_meta(client, &base),
+        fetch_slots(client, &base, api_key),
+        fetch_model_meta(client, &base, api_key),
     );
 
     let slots = slots_res.unwrap_or_default();
@@ -208,10 +209,10 @@ async fn fetch_model_details(client: &Client, model_id: &str, port: u16) -> Resu
     })
 }
 
-async fn fetch_slots(client: &Client, base: &str) -> Result<Vec<Slot>> {
+async fn fetch_slots(client: &Client, base: &str, api_key: &str) -> Result<Vec<Slot>> {
     let resp = client
         .get(format!("{base}/slots"))
-        .bearer_auth("KEY-SECRET")
+        .bearer_auth(api_key)
         .send()
         .await?;
 
@@ -222,10 +223,10 @@ async fn fetch_slots(client: &Client, base: &str) -> Result<Vec<Slot>> {
     Ok(resp.json().await?)
 }
 
-async fn fetch_model_meta(client: &Client, base: &str) -> Result<Option<ModelMeta>> {
+async fn fetch_model_meta(client: &Client, base: &str, api_key: &str) -> Result<Option<ModelMeta>> {
     let resp: PerModelResponse = client
         .get(format!("{base}/v1/models"))
-        .bearer_auth("KEY-SECRET")
+        .bearer_auth(api_key)
         .send()
         .await?
         .json()
