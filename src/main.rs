@@ -9,6 +9,7 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+use reqwest::header::HeaderMap;
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::{
     io,
@@ -59,8 +60,11 @@ async fn main() -> Result<()> {
 
 async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, tick_rate: Duration) -> Result<()> {
     let server_url = "http://localhost:8080".to_string();
+    let mut headers = HeaderMap::new();
+    headers.insert("Authorization", "Bearer KEY-SECRET".parse().unwrap());
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
+        .default_headers(headers)
         .build()?;
 
     let mut app = App::new(server_url.clone());

@@ -179,6 +179,7 @@ pub async fn fetch_all(client: &Client, base_url: &str) -> FetchResult {
 async fn fetch_router_models(client: &Client, base_url: &str) -> Result<Vec<RouterModel>> {
     let resp: RouterModelsResponse = client
         .get(format!("{base_url}/v1/models"))
+        .bearer_auth("KEY-SECRET")
         .send()
         .await?
         .json()
@@ -210,6 +211,7 @@ async fn fetch_model_details(client: &Client, model_id: &str, port: u16) -> Resu
 async fn fetch_slots(client: &Client, base: &str) -> Result<Vec<Slot>> {
     let resp = client
         .get(format!("{base}/slots"))
+        .bearer_auth("KEY-SECRET")
         .send()
         .await?;
 
@@ -223,6 +225,7 @@ async fn fetch_slots(client: &Client, base: &str) -> Result<Vec<Slot>> {
 async fn fetch_model_meta(client: &Client, base: &str) -> Result<Option<ModelMeta>> {
     let resp: PerModelResponse = client
         .get(format!("{base}/v1/models"))
+        .bearer_auth("KEY-SECRET")
         .send()
         .await?
         .json()
