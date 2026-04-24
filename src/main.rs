@@ -20,8 +20,8 @@ use tokio::sync::mpsc;
 fn parse_args() -> Result<(Duration, String, String)> {
     let mut args = std::env::args().skip(1);
     let mut interval = Duration::from_secs(1);
-    let mut server_url = "http://localhost:8080".to_string();
-    let mut api_key = "KEY-SECRET".to_string();
+    let mut server_url: Option<String> = None;
+    let mut api_key: Option<String> = None;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -41,14 +41,14 @@ fn parse_args() -> Result<(Duration, String, String)> {
             }
             "--url" => {
                 if let Some(val) = args.next() {
-                    server_url = val;
+                    server_url = Some(val);
                 } else {
                     bail!("--url requires a value");
                 }
             }
             "--key" => {
                 if let Some(val) = args.next() {
-                    api_key = val;
+                    api_key = Some(val);
                 } else {
                     bail!("--key requires a value");
                 }
@@ -67,12 +67,12 @@ fn parse_args() -> Result<(Duration, String, String)> {
         }
     }
 
-    if let Ok(val) = std::env::var("LLM_DEFAULT_URL") {
-        server_url = val;
-    }
-    if let Ok(val) = std::env::var("LLM_DEFAULT_KEY") {
-        api_key = val;
-    }
+    let server_url = server_url
+        .or_else(|| std::env::var("LLM_DEFAULT_URL").ok())
+        .unwrap_or_else(|| "http://localhost:8080".to_string());
+    let api_key = api_key
+        .or_else(|| std::env::var("LLM_DEFAULT_KEY").ok())
+        .unwrap_or_else(|| "KEY-SECRET".to_string());
 
     Ok((interval, server_url, api_key))
 }

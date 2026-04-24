@@ -18,7 +18,23 @@ Terminal UI for monitoring a [llama.cpp](https://github.com/ggml-org/llama.cpp) 
 cargo run --release [INTERVAL_SECS]
 ```
 
-`INTERVAL_SECS` defaults to 1. The monitor assumes the router is running at `http://localhost:8080`.
+`INTERVAL_SECS` defaults to 1.
+
+### CLI flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--url <URL>` | Router server URL | `http://localhost:8080` |
+| `--key <KEY>` | API key for authentication | `KEY-SECRET` |
+
+### Environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `LLM_DEFAULT_URL` | Router server URL |
+| `LLM_DEFAULT_KEY` | API key |
+
+CLI flags take precedence over environment variables.
 
 ### Key bindings
 
@@ -28,9 +44,25 @@ cargo run --release [INTERVAL_SECS]
 | `↑` / `↓` | Scroll |
 | `q` / `Esc` | Quit |
 
+## Installation
+
+```
+cargo install --git https://github.com/unknown/llama-monitor
+```
+
+Or clone and build locally:
+
+```
+git clone <repo-url>
+cd llama-monitor
+cargo install --path .
+```
+
+Requires [Rust](https://rustup.rs/) 1.74 or later.
+
 ## Requirements
 
-A llama.cpp router server (`llama-server --router`) reachable at `http://localhost:8080`. The per-model `/slots` endpoint must be enabled (it is by default; disable with `--slots-endpoint-disable`).
+A llama.cpp server (`llama-server`) reachable at `http://localhost:8080`. The per-model `/slots` endpoint must be enabled (it is by default; disable with `--slots-endpoint-disable`).
 
 ## Notes
 
