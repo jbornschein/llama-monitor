@@ -15,26 +15,18 @@ Terminal UI for monitoring a [llama.cpp](https://github.com/ggml-org/llama.cpp) 
 ## Usage
 
 ```
-llama-monitor [INTERVAL_SECS]
+llama-monitor [OPTIONS]
 ```
-
-`INTERVAL_SECS` defaults to 1.
 
 ### CLI flags
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--url <URL>` | Router server URL | `http://localhost:8080` |
-| `--key <KEY>` | API key for authentication | `KEY-SECRET` |
+| Flag | Env variable | Description | Default |
+|------|-------------|-------------|---------|
+| `--url <URL>` | `LLM_DEFAULT_URL` | Router server URL | `http://localhost:8080` |
+| `--key <KEY>` | `LLM_DEFAULT_KEY` | API key for authentication | `KEY-SECRET` |
+| `-i, --interval <SECS>` | — | Refresh interval in seconds | `1` |
 
-### Environment variables
-
-| Variable | Description |
-|----------|-------------|
-| `LLM_DEFAULT_URL` | Router server URL |
-| `LLM_DEFAULT_KEY` | API key |
-
-CLI flags take precedence over environment variables.
+CLI flags override environment variables.
 
 ### Key bindings
 
@@ -56,10 +48,10 @@ Or clone and build locally:
 git clone <repo-url>
 cd llama-monitor
 cargo build --release
-./target/release/llama-monitor [INTERVAL_SECS]
+./target/release/llama-monitor
 ```
 
-You can also run directly without building: `cargo run --release [INTERVAL_SECS]`.
+You can also run directly without building: `cargo run --release`.
 
 Requires [Rust](https://rustup.rs/) 1.74 or later.
 

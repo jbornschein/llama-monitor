@@ -2,84 +2,43 @@ mod api;
 mod app;
 mod ui;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 use app::App;
- use crossterm::{
-       event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
+use clap::Parser;
+use crossterm::{
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use reqwest::header::HeaderMap;
 use ratatui::{Terminal, backend::CrosstermBackend};
-use std::{
-    io,
-    time::{Duration, Instant},
-};
+use std::{io, time::{Duration, Instant}};
 use tokio::sync::mpsc;
 
-fn parse_args() -> Result<(Duration, String, String)> {
-    let mut args = std::env::args().skip(1);
-    let mut interval = Duration::from_secs(1);
-    let mut server_url: Option<String> = None;
-    let mut api_key: Option<String> = None;
+#[derive(Parser, Debug)]
+#[command(name = "llama-monitor", about = "Terminal UI for monitoring a llama.cpp router server")]
+pub struct MonitorArgs {
+    /// router server url
+    #[arg(long, short = 'u', default_value = "http://localhost:8080", env = "LLM_DEFAULT_URL")]
+    pub url: String,
 
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "-h" | "--help" => {
-                eprintln!("Usage: llama-monitor [OPTIONS] [INTERVAL_SECS]");
-                eprintln!();
-                eprintln!("Options:");
-                eprintln!("  --url <URL>      Router URL (default: http://localhost:8080)");
-                eprintln!("  --key <KEY>      API key (default: KEY-SECRET)");
-                eprintln!();
-                eprintln!("Environment variables:");
-                eprintln!("  LLM_DEFAULT_URL   Router URL (overridden by --url)");
-                eprintln!("  LLM_DEFAULT_KEY   API key (overridden by --key)");
-                eprintln!();
-                eprintln!("  INTERVAL_SECS  Refresh interval in seconds (default: 1)");
-                std::process::exit(0);
-            }
-            "--url" => {
-                if let Some(val) = args.next() {
-                    server_url = Some(val);
-                } else {
-                    bail!("--url requires a value");
-                }
-            }
-            "--key" => {
-                if let Some(val) = args.next() {
-                    api_key = Some(val);
-                } else {
-                    bail!("--key requires a value");
-                }
-            }
-            s => {
-                if let Ok(secs) = s.parse::<f64>() {
-                    if secs > 0.0 {
-                        interval = Duration::from_secs_f64(secs);
-                    } else {
-                        bail!("Invalid interval {:?}: expected a positive number of seconds", s);
-                    }
-                } else {
-                    bail!("Unknown argument {:?}", s);
-                }
-            }
-        }
-    }
+    /// api key for authentication
+    #[arg(short = 'k', long, default_value = "", env = "LLM_DEFAULT_KEY")]
+    pub key: String,
 
-    let server_url = server_url
-        .or_else(|| std::env::var("LLM_DEFAULT_URL").ok())
-        .unwrap_or_else(|| "http://localhost:8080".to_string());
-    let api_key = api_key
-        .or_else(|| std::env::var("LLM_DEFAULT_KEY").ok())
-        .unwrap_or_else(|| "KEY-SECRET".to_string());
-
-    Ok((interval, server_url, api_key))
+    /// refresh interval in seconds
+    #[arg(long, short = 'i', default_value = "1")]
+    pub interval: f64,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let (tick_rate, server_url, api_key) = parse_args()?;
+    let args = MonitorArgs::parse();
+
+    if args.interval <= 0.0 {
+        anyhow::bail!("Invalid interval: expected a positive number of seconds");
+    }
+    let tick_rate = Duration::from_secs_f64(args.interval);
 
     // Set up terminal
     enable_raw_mode()?;
@@ -88,14 +47,14 @@ async fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let result = run(&mut terminal, tick_rate, server_url, api_key).await;
+    let result = run(&mut terminal, tick_rate, args.url, args.key).await;
 
     // Restore terminal
     disable_raw_mode()?;
-  execute!(
-       terminal.backend_mut(),
-       LeaveAlternateScreen
-   )?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen
+    )?;
     terminal.show_cursor()?;
 
     result
