@@ -15,7 +15,7 @@ Terminal UI for monitoring a [llama.cpp](https://github.com/ggml-org/llama.cpp) 
 ## Usage
 
 ```
-cargo run --release [INTERVAL_SECS]
+llama-monitor [INTERVAL_SECS]
 ```
 
 `INTERVAL_SECS` defaults to 1.
@@ -55,8 +55,11 @@ Or clone and build locally:
 ```
 git clone <repo-url>
 cd llama-monitor
-cargo install --path .
+cargo build --release
+./target/release/llama-monitor [INTERVAL_SECS]
 ```
+
+You can also run directly without building: `cargo run --release [INTERVAL_SECS]`.
 
 Requires [Rust](https://rustup.rs/) 1.74 or later.
 
