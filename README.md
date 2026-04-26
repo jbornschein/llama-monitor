@@ -39,19 +39,16 @@ CLI flags override environment variables.
 ## Installation
 
 ```
-cargo install --git https://github.com/unknown/llama-monitor
+cargo install --git https://github.com/jbornschein/llama-monitor
 ```
 
-Or clone and build locally:
+Or clone, build and run locally:
 
 ```
-git clone <repo-url>
+git clone https://github.com/jbornschein/llama-monitor
 cd llama-monitor
-cargo build --release
-./target/release/llama-monitor
+cargo run -- [OPTIONS]
 ```
-
-You can also run directly without building: `cargo run --release`.
 
 Requires [Rust](https://rustup.rs/) 1.74 or later.
 
