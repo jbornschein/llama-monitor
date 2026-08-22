@@ -10,16 +10,26 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use reqwest::header::HeaderMap;
 use ratatui::{Terminal, backend::CrosstermBackend};
-use std::{io, time::{Duration, Instant}};
+use std::{
+    io,
+    time::{Duration, Instant},
+};
 use tokio::sync::mpsc;
 
 #[derive(Parser, Debug)]
-#[command(name = "llama-monitor", about = "Terminal UI for monitoring a llama.cpp router server")]
+#[command(
+    name = "llama-monitor",
+    about = "Terminal UI for monitoring a llama.cpp router server"
+)]
 pub struct MonitorArgs {
     /// router server url
-    #[arg(long, short = 'u', default_value = "http://localhost:8080", env = "LLM_DEFAULT_URL")]
+    #[arg(
+        long,
+        short = 'u',
+        default_value = "http://localhost:8080",
+        env = "LLM_DEFAULT_URL"
+    )]
     pub url: String,
 
     /// api key for authentication
@@ -51,22 +61,20 @@ async fn main() -> Result<()> {
 
     // Restore terminal
     disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen
-    )?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
 
     result
 }
 
-async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, tick_rate: Duration, server_url: String, api_key: String) -> Result<()> {
-    let mut headers = HeaderMap::new();
-    let auth_header = format!("Bearer {}", api_key).parse().map_err(|e| anyhow::anyhow!("Invalid auth header: {e}"))?;
-    headers.insert("Authorization", auth_header);
+async fn run(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    tick_rate: Duration,
+    server_url: String,
+    api_key: String,
+) -> Result<()> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
-        .default_headers(headers)
         .build()
         .map_err(|e| anyhow::anyhow!("Failed to build HTTP client: {e}"))?;
 
@@ -75,8 +83,8 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, tick_rate: D
     // Channel for background fetch results (unbounded to prevent blocking)
     let (tx, mut rx) = mpsc::unbounded_channel();
 
-    // Initial fetch
-    {
+    // Spawn a background fetch; the result lands on the channel
+    let spawn_fetch = || {
         let client = client.clone();
         let url = server_url.clone();
         let key = api_key.clone();
@@ -85,7 +93,9 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, tick_rate: D
             let data = api::fetch_all(&client, &url, &key).await;
             let _ = tx.send(data);
         });
-    }
+    };
+    // Initial fetch
+    spawn_fetch();
 
     let mut last_tick = Instant::now();
 
@@ -100,30 +110,22 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, tick_rate: D
             Duration::ZERO
         };
 
-        if event::poll(timeout.min(Duration::from_millis(100)))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Char('q') | KeyCode::Esc => break,
-                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
-                        KeyCode::Char('r') => {
-                            // Force refresh
-                            app.set_refreshing(true);
-                            let client = client.clone();
-                            let url = server_url.clone();
-                            let key = api_key.clone();
-                            let tx = tx.clone();
-                            tokio::spawn(async move {
-                                let data = api::fetch_all(&client, &url, &key).await;
-                                let _ = tx.send(data);
-                            });
-                            last_tick = Instant::now();
-                        }
-                        KeyCode::Up => app.scroll_up(),
-                        KeyCode::Down => app.scroll_down(),
-                        _ => {}
-                    }
+        if event::poll(timeout.min(Duration::from_millis(100)))?
+            && let Event::Key(key) = event::read()?
+            && key.kind == KeyEventKind::Press
+        {
+            match key.code {
+                KeyCode::Char('q') | KeyCode::Esc => break,
+                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
+                KeyCode::Char('r') => {
+                    // Force refresh
+                    app.set_refreshing(true);
+                    spawn_fetch();
+                    last_tick = Instant::now();
                 }
+                KeyCode::Up => app.scroll_up(),
+                KeyCode::Down => app.scroll_down(),
+                _ => {}
             }
         }
 
@@ -135,14 +137,7 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, tick_rate: D
         // Periodic refresh
         if last_tick.elapsed() >= tick_rate {
             app.set_refreshing(true);
-            let client = client.clone();
-            let url = server_url.clone();
-            let key = api_key.clone();
-            let tx = tx.clone();
-            tokio::spawn(async move {
-                let data = api::fetch_all(&client, &url, &key).await;
-                let _ = tx.send(data);
-            });
+            spawn_fetch();
             last_tick = Instant::now();
         }
     }

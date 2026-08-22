@@ -4,9 +4,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{
-        Block, Borders, Cell, Paragraph, Row, Sparkline, Table, TableState,
-    },
+    widgets::{Block, Borders, Cell, Paragraph, Row, Sparkline, Table, TableState},
 };
 
 const LOADED_COLOR: Color = Color::Green;
@@ -24,9 +22,9 @@ pub fn draw(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // header
-            Constraint::Min(10),    // main content
-            Constraint::Length(3),  // footer / help
+            Constraint::Length(3), // header
+            Constraint::Min(10),   // main content
+            Constraint::Length(3), // footer / help
         ])
         .split(size);
 
@@ -94,9 +92,13 @@ fn draw_main(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_models_list(f: &mut Frame, app: &App, area: Rect) {
-    let header_cells = ["Status", "Model", "Params", "Size"]
-        .iter()
-        .map(|h| Cell::from(*h).style(Style::default().fg(HEADER_COLOR).add_modifier(Modifier::BOLD)));
+    let header_cells = ["Status", "Model", "Params", "Size"].iter().map(|h| {
+        Cell::from(*h).style(
+            Style::default()
+                .fg(HEADER_COLOR)
+                .add_modifier(Modifier::BOLD),
+        )
+    });
     let header = Row::new(header_cells).height(1).bottom_margin(1);
 
     let rows: Vec<Row> = app
@@ -112,33 +114,32 @@ fn draw_models_list(f: &mut Frame, app: &App, area: Rect) {
 
             let short_id = m.id.clone();
             let id_style = if is_loaded {
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(UNLOADED_COLOR)
             };
 
             // Look up metadata from loaded_models
-            let (params_str, size_str) = if let Some(lm) = app
-                .loaded_models
-                .iter()
-                .find(|lm| lm.model_id == m.id)
-            {
-                let p = lm
-                    .meta
-                    .as_ref()
-                    .and_then(|m| m.n_params)
-                    .map(fmt_params)
-                    .unwrap_or_default();
-                let s = lm
-                    .meta
-                    .as_ref()
-                    .and_then(|m| m.size)
-                    .map(fmt_bytes)
-                    .unwrap_or_default();
-                (p, s)
-            } else {
-                (String::new(), String::new())
-            };
+            let (params_str, size_str) =
+                if let Some(lm) = app.loaded_models.iter().find(|lm| lm.model_id == m.id) {
+                    let p = lm
+                        .meta
+                        .as_ref()
+                        .and_then(|m| m.n_params)
+                        .map(fmt_params)
+                        .unwrap_or_default();
+                    let s = lm
+                        .meta
+                        .as_ref()
+                        .and_then(|m| m.size)
+                        .map(fmt_bytes)
+                        .unwrap_or_default();
+                    (p, s)
+                } else {
+                    (String::new(), String::new())
+                };
 
             let tps = app.model_tps(&m.id);
             let tps_span = if tps > 0.1 {
@@ -170,7 +171,11 @@ fn draw_models_list(f: &mut Frame, app: &App, area: Rect) {
         Block::default()
             .borders(Borders::ALL)
             .title(" Models ")
-            .title_style(Style::default().fg(TITLE_COLOR).add_modifier(Modifier::BOLD)),
+            .title_style(
+                Style::default()
+                    .fg(TITLE_COLOR)
+                    .add_modifier(Modifier::BOLD),
+            ),
     )
     .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
@@ -201,34 +206,33 @@ fn draw_loaded_detail(f: &mut Frame, app: &App, area: Rect) {
     }
 }
 
-fn draw_model_panel(
-    f: &mut Frame,
-    app: &App,
-    model: &crate::api::LoadedModelData,
-    area: Rect,
-) {
+fn draw_model_panel(f: &mut Frame, app: &App, model: &crate::api::LoadedModelData, area: Rect) {
     let active = app.active_slot_count(&model.model_id);
     let total = app.total_slot_count(&model.model_id);
     let tps = app.model_tps(&model.model_id);
 
-    let meta_str = model.meta.as_ref().map(|m| {
-        let mut parts = vec![];
-        if let Some(p) = m.n_params {
-            parts.push(fmt_params(p));
-        }
-        if let Some(s) = m.size {
-            parts.push(fmt_bytes(s));
-        }
-        if let Some(ctx) = m.n_ctx_train {
-            parts.push(format!("ctx:{}", fmt_ctx(ctx)));
-        }
-        parts.join("  ")
-    }).unwrap_or_default();
+    let meta_str = model
+        .meta
+        .as_ref()
+        .map(|m| {
+            let mut parts = vec![];
+            if let Some(p) = m.n_params {
+                parts.push(fmt_params(p));
+            }
+            if let Some(s) = m.size {
+                parts.push(fmt_bytes(s));
+            }
+            if let Some(ctx) = m.n_ctx_train {
+                parts.push(format!("ctx:{}", fmt_ctx(ctx)));
+            }
+            parts.join("  ")
+        })
+        .unwrap_or_default();
 
+    let port_str = model.port.map(|p| format!(":{p}")).unwrap_or_default();
     let title = format!(
-        " {} :{} │ {active}/{total} slots │ {tps:.1} t/s │ {meta_str} ",
+        " {}{port_str} │ {active}/{total} slots │ {tps:.1} t/s │ {meta_str} ",
         shorten_model_id(&model.model_id),
-        model.port,
     );
 
     // Split area: slots table + sparkline
@@ -239,11 +243,31 @@ fn draw_model_panel(
 
     // ── Slots table ──
     let slot_header = Row::new(vec![
-        Cell::from("Slot").style(Style::default().fg(HEADER_COLOR).add_modifier(Modifier::BOLD)),
-        Cell::from("State").style(Style::default().fg(HEADER_COLOR).add_modifier(Modifier::BOLD)),
-        Cell::from("Task").style(Style::default().fg(HEADER_COLOR).add_modifier(Modifier::BOLD)),
-        Cell::from("Generated").style(Style::default().fg(HEADER_COLOR).add_modifier(Modifier::BOLD)),
-        Cell::from("t/s").style(Style::default().fg(HEADER_COLOR).add_modifier(Modifier::BOLD)),
+        Cell::from("Slot").style(
+            Style::default()
+                .fg(HEADER_COLOR)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Cell::from("State").style(
+            Style::default()
+                .fg(HEADER_COLOR)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Cell::from("Task").style(
+            Style::default()
+                .fg(HEADER_COLOR)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Cell::from("Generated").style(
+            Style::default()
+                .fg(HEADER_COLOR)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Cell::from("t/s").style(
+            Style::default()
+                .fg(HEADER_COLOR)
+                .add_modifier(Modifier::BOLD),
+        ),
     ])
     .height(1)
     .bottom_margin(0);
@@ -257,18 +281,19 @@ fn draw_model_panel(
             let (state_cell, state_style) = if in_prefill {
                 (
                     Cell::from("prefill"),
-                    Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::Magenta)
+                        .add_modifier(Modifier::BOLD),
                 )
             } else if slot.is_processing {
                 (
                     Cell::from("generate"),
-                    Style::default().fg(ACTIVE_COLOR).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(ACTIVE_COLOR)
+                        .add_modifier(Modifier::BOLD),
                 )
             } else {
-                (
-                    Cell::from("idle"),
-                    Style::default().fg(DIM_COLOR),
-                )
+                (Cell::from("idle"), Style::default().fg(DIM_COLOR))
             };
 
             let task_str = match slot.id_task {
@@ -293,13 +318,13 @@ fn draw_model_panel(
                 state_cell,
                 Cell::from(task_str).style(row_style),
                 Cell::from(format!("{}", slot.n_decoded())).style(row_style),
-                Cell::from(tps_str).style(
-                    if slot.is_processing {
-                        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
-                    } else {
-                        Style::default().fg(DIM_COLOR)
-                    }
-                ),
+                Cell::from(tps_str).style(if slot.is_processing {
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(DIM_COLOR)
+                }),
             ])
         })
         .collect();
@@ -319,7 +344,11 @@ fn draw_model_panel(
         Block::default()
             .borders(Borders::ALL)
             .title(title)
-            .title_style(Style::default().fg(LOADED_COLOR).add_modifier(Modifier::BOLD)),
+            .title_style(
+                Style::default()
+                    .fg(LOADED_COLOR)
+                    .add_modifier(Modifier::BOLD),
+            ),
     );
 
     let mut state = TableState::default();
@@ -349,13 +378,33 @@ fn draw_model_panel(
 
 fn draw_footer(f: &mut Frame, area: Rect) {
     let text = Line::from(vec![
-        Span::styled(" q", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " q",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw("/"),
-        Span::styled("Esc", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Esc",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" quit  "),
-        Span::styled(" r ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " r ",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" force refresh  "),
-        Span::styled(" ↑↓ ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " ↑↓ ",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" scroll  "),
         Span::raw("  refreshes every 2s"),
     ]);

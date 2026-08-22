@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use reqwest::Client;
+use reqwest::{Client, RequestBuilder};
 use serde::Deserialize;
 
 // ─── Router-level /v1/models ─────────────────────────────────────────────────
@@ -8,6 +8,9 @@ use serde::Deserialize;
 pub struct RouterModel {
     pub id: String,
     pub status: RouterModelStatus,
+    /// Model metadata (n_params, size, …) — only present while the model is loaded
+    #[serde(default)]
+    pub meta: Option<ModelMeta>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -17,18 +20,16 @@ pub struct RouterModelStatus {
 }
 
 impl RouterModel {
-    /// Extract the port from the args list: `--port 49341`
+    /// Extract the backend port from the args list: `--port 49341` (display only)
     pub fn port(&self) -> Option<u16> {
         let mut it = self.status.args.iter();
         while let Some(arg) = it.next() {
-            if arg == "--port" {
-                if let Some(p) = it.next() {
-                    if let Ok(n) = p.parse::<u16>() {
-                        if n > 0 {
-                            return Some(n);
-                        }
-                    }
-                }
+            if arg == "--port"
+                && let Some(p) = it.next()
+                && let Ok(n) = p.parse::<u16>()
+                && n > 0
+            {
+                return Some(n);
             }
         }
         None
@@ -44,12 +45,10 @@ pub struct RouterModelsResponse {
     pub data: Vec<RouterModel>,
 }
 
-// ─── Per-model /v1/models (metadata) ─────────────────────────────────────────
-
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModelMeta {
     pub n_params: Option<u64>,
-    pub size: Option<u64>,      // bytes
+    pub size: Option<u64>, // bytes
     pub n_ctx_train: Option<u64>,
     #[allow(dead_code)]
     pub n_vocab: Option<u32>,
@@ -57,32 +56,11 @@ pub struct ModelMeta {
     pub n_embd: Option<u32>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct PerModelEntry {
-    #[allow(dead_code)]
-    pub id: String,
-    pub meta: Option<ModelMeta>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct PerModelResponse {
-    pub data: Vec<PerModelEntry>,
-}
-
-// ─── /slots ──────────────────────────────────────────────────────────────────
+// ─── /slots (proxied by the router via ?model=<id>) ──────────────────────────
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SlotNextToken {
     pub n_decoded: u64,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone, Deserialize)]
-pub struct SlotParams {
-    pub chat_format: Option<String>,
-    pub temperature: Option<f64>,
-    pub top_k: Option<u32>,
-    pub top_p: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -90,8 +68,6 @@ pub struct Slot {
     pub id: u32,
     pub is_processing: bool,
     pub id_task: Option<i64>,
-    #[allow(dead_code)]
-    pub params: Option<SlotParams>,
     pub next_token: Option<Vec<SlotNextToken>>,
 }
 
@@ -103,8 +79,6 @@ impl Slot {
             .map(|t| t.n_decoded)
             .unwrap_or(0)
     }
-
-
 }
 
 // ─── Aggregated fetch result ──────────────────────────────────────────────────
@@ -112,11 +86,9 @@ impl Slot {
 #[derive(Debug, Clone)]
 pub struct LoadedModelData {
     pub model_id: String,
-    pub port: u16,
+    pub port: Option<u16>,
     pub meta: Option<ModelMeta>,
     pub slots: Vec<Slot>,
-    #[allow(dead_code)]
-    pub fetch_time: std::time::Instant,
 }
 
 #[derive(Debug, Clone)]
@@ -133,7 +105,7 @@ pub async fn fetch_all(client: &Client, base_url: &str, api_key: &str) -> FetchR
         error: None,
     };
 
-    // 1. Fetch router model list
+    // 1. Fetch the router model list (loaded entries already carry their meta)
     let models = match fetch_router_models(client, base_url, api_key).await {
         Ok(m) => m,
         Err(e) => {
@@ -144,30 +116,52 @@ pub async fn fetch_all(client: &Client, base_url: &str, api_key: &str) -> FetchR
 
     result.all_models = models.clone();
 
-    // 2. For each loaded model, fetch slots + metadata in parallel
+    // 2. Fetch slots for each loaded model in parallel (via the router)
     let loaded: Vec<RouterModel> = models.into_iter().filter(|m| m.is_loaded()).collect();
 
     let mut handles = vec![];
     for model in loaded {
-        if let Some(port) = model.port() {
-            let client = client.clone();
-            let api_key = api_key.to_string();
-            handles.push(tokio::spawn(async move {
-                fetch_model_details(&client, &model.id, port, &api_key).await
-            }));
-        }
+        let client = client.clone();
+        let base_url = base_url.to_string();
+        let api_key = api_key.to_string();
+        let model_id = model.id.clone();
+        handles.push(tokio::spawn(async move {
+            (
+                model,
+                fetch_slots(&client, &base_url, &model_id, &api_key).await,
+            )
+        }));
     }
 
     for handle in handles {
         match handle.await {
-            Ok(Ok(data)) => result.loaded.push(data),
-            Ok(Err(e)) => {
-                // non-fatal: show partial data
+            Ok((model, Ok(slots))) => {
+                let port = model.port();
+                result.loaded.push(LoadedModelData {
+                    model_id: model.id,
+                    port,
+                    meta: model.meta,
+                    slots,
+                });
+            }
+            Ok((model, Err(e))) => {
+                // Non-fatal: keep the model (its meta is still useful) and report the failure
                 if result.error.is_none() {
-                    result.error = Some(e.to_string());
+                    result.error = Some(format!("{}: {e}", model.id));
+                }
+                let port = model.port();
+                result.loaded.push(LoadedModelData {
+                    model_id: model.id,
+                    port,
+                    meta: model.meta,
+                    slots: vec![],
+                });
+            }
+            Err(e) => {
+                if result.error.is_none() {
+                    result.error = Some(format!("slots task failed: {e}"));
                 }
             }
-            _ => {}
         }
     }
 
@@ -177,44 +171,34 @@ pub async fn fetch_all(client: &Client, base_url: &str, api_key: &str) -> FetchR
     result
 }
 
-async fn fetch_router_models(client: &Client, base_url: &str, api_key: &str) -> Result<Vec<RouterModel>> {
-    let resp: RouterModelsResponse = client
-        .get(format!("{base_url}/v1/models"))
-        .bearer_auth(api_key)
-        .send()
-        .await?
-        .json()
-        .await?;
+async fn fetch_router_models(
+    client: &Client,
+    base_url: &str,
+    api_key: &str,
+) -> Result<Vec<RouterModel>> {
+    let resp: RouterModelsResponse =
+        with_auth(client.get(format!("{base_url}/v1/models")), api_key)
+            .send()
+            .await?
+            .json()
+            .await?;
     Ok(resp.data)
 }
 
-async fn fetch_model_details(client: &Client, model_id: &str, port: u16, api_key: &str) -> Result<LoadedModelData> {
-    let base = format!("http://localhost:{port}");
-
-    // Fetch slots and metadata concurrently
-    let (slots_res, meta_res) = tokio::join!(
-        fetch_slots(client, &base, api_key),
-        fetch_model_meta(client, &base, api_key),
-    );
-
-    let slots = slots_res.unwrap_or_default();
-    let meta = meta_res.ok().flatten();
-
-    Ok(LoadedModelData {
-        model_id: model_id.to_string(),
-        port,
-        meta,
-        slots,
-        fetch_time: std::time::Instant::now(),
-    })
-}
-
-async fn fetch_slots(client: &Client, base: &str, api_key: &str) -> Result<Vec<Slot>> {
-    let resp = client
-        .get(format!("{base}/slots"))
-        .bearer_auth(api_key)
-        .send()
-        .await?;
+async fn fetch_slots(
+    client: &Client,
+    base_url: &str,
+    model_id: &str,
+    api_key: &str,
+) -> Result<Vec<Slot>> {
+    let resp = with_auth(
+        client
+            .get(format!("{base_url}/slots"))
+            .query(&[("model", model_id)]),
+        api_key,
+    )
+    .send()
+    .await?;
 
     if !resp.status().is_success() {
         return Err(anyhow!("slots returned {}", resp.status()));
@@ -223,14 +207,11 @@ async fn fetch_slots(client: &Client, base: &str, api_key: &str) -> Result<Vec<S
     Ok(resp.json().await?)
 }
 
-async fn fetch_model_meta(client: &Client, base: &str, api_key: &str) -> Result<Option<ModelMeta>> {
-    let resp: PerModelResponse = client
-        .get(format!("{base}/v1/models"))
-        .bearer_auth(api_key)
-        .send()
-        .await?
-        .json()
-        .await?;
-
-    Ok(resp.data.into_iter().next().and_then(|e| e.meta))
+/// Attach the API key only when one is configured (some servers reject unexpected auth headers)
+fn with_auth(builder: RequestBuilder, api_key: &str) -> RequestBuilder {
+    if api_key.is_empty() {
+        builder
+    } else {
+        builder.bearer_auth(api_key)
+    }
 }

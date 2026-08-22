@@ -150,14 +150,6 @@ impl App {
             .unwrap_or(0.0)
     }
 
-    #[allow(dead_code)]
-    pub fn tps_history(&self, model_id: &str, slot_id: u32) -> &[f64] {
-        self.slot_histories
-            .get(&(model_id.to_string(), slot_id))
-            .map(|h| h.tps_history.as_slice())
-            .unwrap_or(&[])
-    }
-
     /// Aggregate tps across all active slots for a model
     pub fn model_tps(&self, model_id: &str) -> f64 {
         self.slot_histories
