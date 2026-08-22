@@ -176,6 +176,7 @@ async fn fetch_router_models(
     base_url: &str,
     api_key: &str,
 ) -> Result<Vec<RouterModel>> {
+    let base_url = base_url.trim_end_matches('/');
     let resp: RouterModelsResponse =
         with_auth(client.get(format!("{base_url}/v1/models")), api_key)
             .send()
@@ -191,6 +192,7 @@ async fn fetch_slots(
     model_id: &str,
     api_key: &str,
 ) -> Result<Vec<Slot>> {
+    let base_url = base_url.trim_end_matches('/');
     let resp = with_auth(
         client
             .get(format!("{base_url}/slots"))
