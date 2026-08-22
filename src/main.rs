@@ -28,12 +28,12 @@ pub struct MonitorArgs {
         long,
         short = 'u',
         default_value = "http://localhost:8080",
-        env = "LLM_DEFAULT_URL"
+        env = "DEFAULT_LLM_URL"
     )]
     pub url: String,
 
     /// api key for authentication
-    #[arg(short = 'k', long, default_value = "", env = "LLM_DEFAULT_KEY")]
+    #[arg(short = 'k', long, default_value = "", env = "DEFAULT_LLM_KEY")]
     pub key: String,
 
     /// refresh interval in seconds

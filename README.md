@@ -20,8 +20,8 @@ llama-monitor [OPTIONS]
 
 | Flag | Env variable | Description | Default |
 |------|-------------|-------------|---------|
-| `--url <URL>` | `LLM_DEFAULT_URL` | Router server URL | `http://localhost:8080` |
-| `--key <KEY>` | `LLM_DEFAULT_KEY` | API key for authentication | (none) |
+| `--url <URL>` | `DEFAULT_LLM_URL` | Router server URL | `http://localhost:8080` |
+| `--key <KEY>` | `DEFAULT_LLM_KEY` | API key for authentication | (none) |
 | `-i, --interval <SECS>` | — | Refresh interval in seconds | `1` |
 
 CLI flags override environment variables.
