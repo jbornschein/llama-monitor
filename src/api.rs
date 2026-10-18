@@ -68,6 +68,10 @@ pub struct Slot {
     pub id: u32,
     pub is_processing: bool,
     pub id_task: Option<i64>,
+    /// Context size of this slot
+    pub n_ctx: Option<u64>,
+    /// Tokens currently in the slot's context (prompt + generated so far)
+    pub n_prompt_tokens: Option<u64>,
     pub next_token: Option<Vec<SlotNextToken>>,
 }
 
@@ -78,6 +82,11 @@ impl Slot {
             .and_then(|v| v.first())
             .map(|t| t.n_decoded)
             .unwrap_or(0)
+    }
+
+    /// Processing a request but no tokens decoded yet, i.e. still ingesting the prompt
+    pub fn in_prefill(&self) -> bool {
+        self.is_processing && self.n_decoded() == 0
     }
 }
 

@@ -12,38 +12,19 @@ pub struct SlotHistory {
     /// Tokens/sec history (last HISTORY_LEN samples)
     pub tps_history: Vec<f64>,
     pub current_tps: f64,
-    /// id_task of the last request we observed
-    last_id_task: Option<i64>,
-    /// True while a slot is processing but hasn't yet decoded any tokens
-    pub in_prefill: bool,
 }
 
 impl SlotHistory {
-    fn new(n_decoded: u64, id_task: Option<i64>, now: Instant) -> Self {
+    fn new(n_decoded: u64, now: Instant) -> Self {
         Self {
             last_n_decoded: n_decoded,
             last_fetch_time: now,
             tps_history: Vec::with_capacity(HISTORY_LEN),
             current_tps: 0.0,
-            last_id_task: id_task,
-            in_prefill: false,
         }
     }
 
-    fn update(&mut self, n_decoded: u64, id_task: Option<i64>, is_processing: bool, now: Instant) {
-        // Detect a new request starting on this slot
-        if id_task.is_some() && id_task != self.last_id_task && is_processing {
-            self.in_prefill = true;
-            self.current_tps = 0.0;
-        }
-        // Once tokens start flowing, prefill is done
-        if n_decoded > self.last_n_decoded {
-            self.in_prefill = false;
-        }
-        if !is_processing {
-            self.in_prefill = false;
-        }
-
+    fn update(&mut self, n_decoded: u64, now: Instant) {
         let elapsed = now.duration_since(self.last_fetch_time).as_secs_f64();
         if elapsed > 0.1 && n_decoded >= self.last_n_decoded {
             let delta = n_decoded - self.last_n_decoded;
@@ -57,7 +38,6 @@ impl SlotHistory {
             self.tps_history.remove(0);
         }
         self.last_n_decoded = n_decoded;
-        self.last_id_task = id_task;
         self.last_fetch_time = now;
     }
 }
@@ -116,10 +96,10 @@ impl App {
                 let n_decoded = slot.n_decoded();
 
                 match self.slot_histories.get_mut(&key) {
-                    Some(hist) => hist.update(n_decoded, slot.id_task, slot.is_processing, now),
+                    Some(hist) => hist.update(n_decoded, now),
                     None => {
                         self.slot_histories
-                            .insert(key, SlotHistory::new(n_decoded, slot.id_task, now));
+                            .insert(key, SlotHistory::new(n_decoded, now));
                     }
                 }
             }
@@ -134,13 +114,6 @@ impl App {
         self.slot_histories.retain(|k, _| active_keys.contains(k));
 
         self.loaded_models = result.loaded;
-    }
-
-    pub fn slot_in_prefill(&self, model_id: &str, slot_id: u32) -> bool {
-        self.slot_histories
-            .get(&(model_id.to_string(), slot_id))
-            .map(|h| h.in_prefill)
-            .unwrap_or(false)
     }
 
     pub fn slot_tps(&self, model_id: &str, slot_id: u32) -> f64 {
@@ -184,12 +157,17 @@ impl App {
         result
     }
 
-    pub fn active_slot_count(&self, model_id: &str) -> usize {
+    /// (generating, prefilling) slot counts for a model
+    pub fn active_slot_counts(&self, model_id: &str) -> (usize, usize) {
         self.loaded_models
             .iter()
             .find(|m| m.model_id == model_id)
-            .map(|m| m.slots.iter().filter(|s| s.is_processing).count())
-            .unwrap_or(0)
+            .map(|m| {
+                let prefill = m.slots.iter().filter(|s| s.in_prefill()).count();
+                let active = m.slots.iter().filter(|s| s.is_processing).count();
+                (active - prefill, prefill)
+            })
+            .unwrap_or((0, 0))
     }
 
     pub fn total_slot_count(&self, model_id: &str) -> usize {

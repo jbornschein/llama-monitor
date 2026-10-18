@@ -207,7 +207,7 @@ fn draw_loaded_detail(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_model_panel(f: &mut Frame, app: &App, model: &crate::api::LoadedModelData, area: Rect) {
-    let active = app.active_slot_count(&model.model_id);
+    let (generating, prefilling) = app.active_slot_counts(&model.model_id);
     let total = app.total_slot_count(&model.model_id);
     let tps = app.model_tps(&model.model_id);
 
@@ -230,8 +230,13 @@ fn draw_model_panel(f: &mut Frame, app: &App, model: &crate::api::LoadedModelDat
         .unwrap_or_default();
 
     let port_str = model.port.map(|p| format!(":{p}")).unwrap_or_default();
+    let prefill_str = if prefilling > 0 {
+        format!(" +{prefilling} prefill")
+    } else {
+        String::new()
+    };
     let title = format!(
-        " {}{port_str} │ {active}/{total} slots │ {tps:.1} t/s │ {meta_str} ",
+        " {}{port_str} │ {generating}{prefill_str}/{total} slots │ {tps:.1} t/s │ {meta_str} ",
         shorten_model_id(&model.model_id),
     );
 
@@ -258,6 +263,11 @@ fn draw_model_panel(f: &mut Frame, app: &App, model: &crate::api::LoadedModelDat
                 .fg(HEADER_COLOR)
                 .add_modifier(Modifier::BOLD),
         ),
+        Cell::from("Context").style(
+            Style::default()
+                .fg(HEADER_COLOR)
+                .add_modifier(Modifier::BOLD),
+        ),
         Cell::from("Generated").style(
             Style::default()
                 .fg(HEADER_COLOR)
@@ -277,8 +287,7 @@ fn draw_model_panel(f: &mut Frame, app: &App, model: &crate::api::LoadedModelDat
         .iter()
         .map(|slot| {
             let slot_tps = app.slot_tps(&model.model_id, slot.id);
-            let in_prefill = app.slot_in_prefill(&model.model_id, slot.id);
-            let (state_cell, state_style) = if in_prefill {
+            let (state_cell, state_style) = if slot.in_prefill() {
                 (
                     Cell::from("prefill"),
                     Style::default()
@@ -301,6 +310,12 @@ fn draw_model_panel(f: &mut Frame, app: &App, model: &crate::api::LoadedModelDat
                 None => String::new(),
             };
 
+            let ctx_str = match (slot.n_prompt_tokens, slot.n_ctx) {
+                (Some(used), Some(max)) => format!("{}/{}", fmt_ctx(used), fmt_ctx(max)),
+                (Some(used), None) => fmt_ctx(used),
+                _ => String::new(),
+            };
+
             let tps_str = if slot_tps > 0.1 {
                 format!("{slot_tps:.1}")
             } else {
@@ -317,6 +332,7 @@ fn draw_model_panel(f: &mut Frame, app: &App, model: &crate::api::LoadedModelDat
                 Cell::from(format!("{}", slot.id)).style(row_style),
                 state_cell,
                 Cell::from(task_str).style(row_style),
+                Cell::from(ctx_str).style(row_style),
                 Cell::from(format!("{}", slot.n_decoded())).style(row_style),
                 Cell::from(tps_str).style(if slot.is_processing {
                     Style::default()
@@ -335,6 +351,7 @@ fn draw_model_panel(f: &mut Frame, app: &App, model: &crate::api::LoadedModelDat
             Constraint::Length(4),
             Constraint::Length(10),
             Constraint::Length(8),
+            Constraint::Length(10),
             Constraint::Length(10),
             Constraint::Length(7),
         ],
